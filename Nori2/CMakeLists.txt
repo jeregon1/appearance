@@ -99,9 +99,15 @@ add_executable(nori
   src/ttest.cpp
   src/warp.cpp
 
-  src/0_ndotl.cpp
-  src/0_toon.cpp
-  src/0_aov.cpp
+  # src/0_ndotl.cpp
+  # src/0_toon.cpp
+  # src/0_aov.cpp
+  src/aov.cpp
+  src/pointLight.cpp
+  src/normals.cpp
+  src/ndotl.cpp
+  src/direct_whitted.cpp
+  src/01_toon.cpp
 
   # Add your new dependencies here
   # Remember: you might need to rerun cmake after adding any file here!
