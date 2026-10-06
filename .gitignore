@@ -1,0 +1,7 @@
+
+build/
+*.exr
+doc/
+.vscode/
+ext/
+cmake/
