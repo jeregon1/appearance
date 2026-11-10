@@ -31,6 +31,7 @@
 #include <nanogui/icons.h>
 #include <nanogui/shader.h>
 #include <nanogui/renderpass.h>
+#include <nanogui/texture.h>
 #include <nanogui/opengl.h>
 #include <pcg32.h>
 #include <hypothesis.h>
@@ -455,7 +456,6 @@ public:
     }
 
     ~WarpTestScreen() {
-        glDeleteTextures(2, &m_textures[0]);
         delete m_pointShader;
         delete m_gridShader;
         delete m_arrowShader;
@@ -485,7 +485,7 @@ public:
         return true;
     }
 
-    void drawContents() {
+    void draw_contents() override {
         /* Set up a perspective camera matrix */
         nanogui::Matrix4f view, proj, model;
         view = nanogui::Matrix4f::look_at(nanogui::Vector3f(0, 0, 2), nanogui::Vector3f(0, 0, 0), nanogui::Vector3f(0, 1, 0));
@@ -629,7 +629,7 @@ public:
         m_renderPass->end();
     }
 
-    void drawHistogram(const nanogui::Vector2i &pos_, const nanogui::Vector2i &size_, GLuint tex) {
+    void drawHistogram(const nanogui::Vector2i &pos_, const nanogui::Vector2i &size_, nanogui::Texture *tex) {
         nanogui::Vector2f s(-(pos_.x() + 0.25f) / size_.x(),
                              -(pos_.y() + 0.25f) / size_.y());
         nanogui::Vector2f e(size().x() / (float) size_.x() + s.x(),
@@ -637,10 +637,8 @@ public:
         nanogui::Matrix4f mvp = nanogui::Matrix4f::ortho(s.x(), e.x(), e.y(), s.y(), -1, 1);
 
         glDisable(GL_DEPTH_TEST);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, tex);
         m_histogramShader->set_uniform("mvp", mvp);
-        m_histogramShader->set_uniform("tex", 0);
+        m_histogramShader->set_texture("tex", tex);
         m_histogramShader->begin();
         m_histogramShader->draw_array(nanogui::Shader::PrimitiveType::Triangle, 0, 6, true);
         m_histogramShader->end();
@@ -671,11 +669,11 @@ public:
                 buffer[i] = ((k == 0 ? tester.obsFrequencies[i]
                                      : tester.expFrequencies[i]) - minValue) * texScale;
 
-            glBindTexture(GL_TEXTURE_2D, m_textures[k]);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_R32F, tester.xres, tester.yres,
-                         0, GL_RED, GL_FLOAT, buffer.get());
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            m_textures[k] = new nanogui::Texture(
+                nanogui::Texture::PixelFormat::R, nanogui::Texture::ComponentFormat::Float32,
+                nanogui::Vector2i(tester.xres, tester.yres),
+                nanogui::Texture::InterpolationMode::Nearest, nanogui::Texture::InterpolationMode::Nearest);
+            m_textures[k]->upload((const uint8_t *) buffer.get());
         }
 
         m_drawHistogram = true;
@@ -760,6 +758,7 @@ public:
         perform_layout();
 
         m_renderPass = new nanogui::RenderPass({ this });
+        m_renderPass->set_cull_mode(nanogui::RenderPass::CullMode::Disabled);
 
         m_pointShader = new nanogui::Shader(
             m_renderPass,
@@ -894,11 +893,7 @@ public:
         m_histogramShader->set_buffer("indices", nanogui::VariableType::UInt32,
                           { 6 }, indices.data());
 
-        glGenTextures(2, &m_textures[0]);
-        glBindTexture(GL_TEXTURE_2D, m_textures[0]);
-
         set_background(nanogui::Color(0, 0, 0, 255));
-        draw_all();
 
         /* Set default and register slider callback */
         m_pointCountSlider->set_value(7.f/15.f);
@@ -907,6 +902,7 @@ public:
         m_angleSlider->set_value(.5f);
 
         refresh();
+        draw_all();
         set_visible(true);
     }
 private:
@@ -918,7 +914,7 @@ private:
     Window *m_window;
     Slider *m_pointCountSlider, *m_parameterSlider, *m_parameter2Slider, *m_angleSlider;
     TextBox *m_pointCountBox, *m_parameterBox, *m_parameter2Box, *m_angleBox;
-    GLuint m_textures[2];
+    nanogui::ref<nanogui::Texture> m_textures[2];
     ComboBox *m_pointTypeBox;
     ComboBox *m_warpTypeBox;
     CheckBox *m_gridCheckBox;

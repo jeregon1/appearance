@@ -23,6 +23,7 @@
 
 #include <nori/accel.h>
 #include <nori/sampler.h>
+#include <nori/dpdf.h>
 
 NORI_NAMESPACE_BEGIN
 
@@ -147,6 +148,8 @@ private:
     std::vector<Mesh *> m_meshes;
 	std::vector<Emitter *> m_emitters;
 	Emitter *m_enviromentalEmitter = nullptr;
+	bool m_uniformEmitterSampling = false;
+	DiscretePDF m_emitterPDF;
 	
     Integrator *m_integrator = nullptr;
     Sampler *m_sampler = nullptr;

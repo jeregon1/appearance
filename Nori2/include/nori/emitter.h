@@ -147,6 +147,9 @@ public:
 
 	bool isDelta() const { return m_type == EmitterType::EMITTER_POINT; }
 
+    /// Emitted radiance, used to sample emitters proportionally to it
+    virtual Color3f getRadiance() const { return Color3f(1.f); }
+
 protected:
     /// Pointer to the mesh if the emitter is attached to a mesh
     Mesh * m_mesh = nullptr;

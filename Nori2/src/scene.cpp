@@ -28,7 +28,8 @@
 
 NORI_NAMESPACE_BEGIN
 
-Scene::Scene(const PropertyList &) {
+Scene::Scene(const PropertyList &props) {
+    m_uniformEmitterSampling = props.getBoolean("uniformEmitterSampling", false);
     m_accel = new Accel();
     m_enviromentalEmitter = 0;
 }
@@ -47,6 +48,11 @@ void Scene::activate() {
     for(unsigned int i=0; i<m_meshes.size(); ++i )
         if (m_meshes[i]->isEmitter())
             m_emitters.push_back(m_meshes[i]->getEmitter());
+
+    m_emitterPDF.reserve(m_emitters.size());
+    for (const Emitter *em : m_emitters)
+        m_emitterPDF.append(m_uniformEmitterSampling ? 1.f : std::max(em->getRadiance().getLuminance(), 1e-4f));
+    m_emitterPDF.normalize();
 
     m_accel->build();
 
@@ -68,14 +74,19 @@ void Scene::activate() {
 
 /// Sample emitter
 const Emitter * Scene::sampleEmitter(float rnd, float &pdf) const {
-	auto const & n = m_emitters.size();
-	size_t index = std::min(static_cast<size_t>(std::floor(n*rnd)), n - 1);
-	pdf = 1.f / float(n);
+	if (m_emitters.empty()) {
+		pdf = 0.f;
+		return nullptr;
+	}
+	size_t index = m_emitterPDF.sample(rnd, pdf);
 	return m_emitters[index];
 }
 
 float Scene::pdfEmitter(const Emitter *em) const {
-    return 1.f / float(m_emitters.size());
+    for (size_t i = 0; i < m_emitters.size(); ++i)
+        if (m_emitters[i] == em)
+            return m_emitterPDF[i];
+    return 0.f;
 }
 
 

@@ -42,6 +42,7 @@ return m_radiance/(lRec.dist*lRec.dist);
 virtual float pdf(const EmitterQueryRecord &lRec) const {
 return 1.;
 }
+virtual Color3f getRadiance() const { return m_radiance; }
 protected:
 Point3f m_position;
 Color3f m_radiance;

@@ -85,15 +85,28 @@ public:
 
 	
 	virtual Color3f sample(EmitterQueryRecord& lRec, const Point2f& sample, float optional_u) const {
-		throw NoriException("EnvironmentEmitter::sample() is not yet implemented!");
-	}
+        // Generar una direccion aleatoria uniforme en la esfera
+        Vector3f d = Warp::squareToUniformSphere(sample);
+        
+        // Rellenar el Emitter Query Record
+        lRec.wi = d; // El vector apunta DESDE el punto hacia el entorno
+        lRec.dist = std::numeric_limits<float>::infinity(); // La luz de entorno esta en el infinito
+        lRec.pdf = pdf(lRec);
+        
+        // Evaluar la luz que viene de esa direccion
+        // Al igual que en las luces de area, la interfaz de NORI espera que la radiancia 
+        // devuelta esté dividida por la probabilidad espacial/direccional en este paso.
+        return eval(lRec) / lRec.pdf;
+    }
 
 	// Returns probability with respect to solid angle given by all the information inside the emitterqueryrecord.
 	// Assumes all information about the intersection point is already provided inside.
 	// WARNING: Use with care. Malformed EmitterQueryRecords can result in undefined behavior. Plus no visibility is considered.
 	virtual float pdf(const EmitterQueryRecord& lRec) const {
-		throw NoriException("EnvironmentEmitter::pdf() is not yet implemented!");
-	}
+        // La probabilidad de elegir una direccion uniforme en la esfera completa
+        // es siempre 1 / (4 * PI)
+        return Warp::squareToUniformSpherePdf(lRec.wi);
+    }
 
 
 	virtual Color3f getRadiance() const { return m_radiance; }

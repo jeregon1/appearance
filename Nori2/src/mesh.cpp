@@ -44,7 +44,12 @@ void Mesh::activate() {
             NoriObjectFactory::createInstance("diffuse", PropertyList()));
     }
 
+    // 1. Inicializar la PDF discreta con el área de cada triángulo
     m_pdf.reserve(m_F.cols());
+    for (uint32_t i = 0; i < m_F.cols(); ++i) {
+        m_pdf.append(surfaceArea(i));
+    }
+    m_pdf.normalize();
 }
 
 float Mesh::surfaceArea(n_UINT index) const {
@@ -112,17 +117,53 @@ Point3f Mesh::getCentroid(n_UINT index) const {
  * \brief Uniformly sample a position on the mesh with
  * respect to surface area. Returns both position and normal
  */
-void Mesh::samplePosition(const Point2f &sample, Point3f &p, Normal3f &n, Point2f &uv) const
-{
-	throw NoriException("Mesh::samplePosition() is not yet implemented!");	
-}
+void Mesh::samplePosition(const Point2f &sample, Point3f &p, Normal3f &n, Point2f &uv) const {
+    // Seleccionar un triangulo de la malla proporcional a su area
+    Point2f s = sample;
+    uint32_t tri_index = m_pdf.sampleReuse(s.x());
 
+    // Obtener los vertices del triangulo elegido
+    uint32_t i0 = m_F(0, tri_index);
+    uint32_t i1 = m_F(1, tri_index);
+    uint32_t i2 = m_F(2, tri_index);
+
+    const Point3f p0 = m_V.col(i0);
+    const Point3f p1 = m_V.col(i1);
+    const Point3f p2 = m_V.col(i2);
+
+    // Muestrear coordenadas baricentricas en el triangulo
+    Point2f b = Warp::squareToUniformTriangle(s);
+    float u = b.x();
+    float v = b.y();
+    float w = 1.0f - u - v;
+
+    // Interpolar la posicion en 3D
+    p = w * p0 + u * p1 + v * p2;
+
+    // Interpolar la normal (o calcularla geometricamente si no existe)
+    if (m_N.size() > 0) {
+        Normal3f n0 = m_N.col(i0);
+        Normal3f n1 = m_N.col(i1);
+        Normal3f n2 = m_N.col(i2);
+        n = (w * n0 + u * n1 + v * n2).normalized();
+    } else {
+        n = Normal3f((p1 - p0).cross(p2 - p0).normalized());
+    }
+
+    // Interpolar las coordenadas UV (OJO: SI ES QUE EXISTEN)
+    if (m_UV.size() > 0) {
+        Point2f uv0 = m_UV.col(i0);
+        Point2f uv1 = m_UV.col(i1);
+        Point2f uv2 = m_UV.col(i2);
+        uv = w * uv0 + u * uv1 + v * uv2;
+    } else {
+        uv = Point2f(0.0f, 0.0f);
+    }
+}
 /// Return the surface area of the given triangle
-float Mesh::pdf(const Point3f &p) const
-{
-	throw NoriException("Mesh::pdf() is not yet implemented!");	
-	
-	return 0.;
+float Mesh::pdf(const Point3f &p) const {
+    // La PDF uniforme sobre una superficie es siempre 1.0 / Area Total
+    return m_pdf.getNormalization();
 }
 
 
