@@ -47,12 +47,27 @@ public:
         /* This is a smooth BRDF -- return zero if the measure
         is wrong, or when queried for illumination on the backside */
         if (bRec.measure != ESolidAngle
-            || Frame::cosTheta(bRec.wi) <= 0
-            || Frame::cosTheta(bRec.wo) <= 0)
+            || Frame::cosTheta(bRec.wi) <= 0.0f
+            || Frame::cosTheta(bRec.wo) <= 0.0f)
             return Color3f(0.0f);
 
+        Vector3f wh = bRec.wi + bRec.wo;
+        if (wh.isZero())
+            return Color3f(0.0f);
+        wh.normalize();
+
+        float cosThetaI = Frame::cosTheta(bRec.wi);
+        float cosThetaO = Frame::cosTheta(bRec.wo);
         
-        throw NoriException("RoughConductor::eval() is not yet implemented!");
+        float alpha = m_alpha->eval(bRec.uv).x();
+        Color3f R0 = m_R0->eval(bRec.uv);
+
+        float D = Reflectance::BeckmannNDF(wh, alpha);
+        Color3f F = Reflectance::fresnel(wh.dot(bRec.wi), R0);
+        float G = Reflectance::G1(bRec.wi, wh, alpha) * 
+                  Reflectance::G1(bRec.wo, wh, alpha);
+
+        return (D * F * G) / (4.0f * cosThetaI * cosThetaO);
     }
 
     /// Evaluate the sampling density of \ref sample() wrt. solid angles
@@ -60,11 +75,18 @@ public:
         /* This is a smooth BRDF -- return zero if the measure
         is wrong, or when queried for illumination on the backside */
         if (bRec.measure != ESolidAngle
-            || Frame::cosTheta(bRec.wi) <= 0
-            || Frame::cosTheta(bRec.wo) <= 0)
+            || Frame::cosTheta(bRec.wi) <= 0.0f
+            || Frame::cosTheta(bRec.wo) <= 0.0f)
             return 0.0f;
 
-        throw NoriException("RoughConductor::eval() is not yet implemented!");
+        Vector3f wh = bRec.wi + bRec.wo;
+        if (wh.isZero())
+        return 0.0f;
+        wh.normalize();
+        
+        float alpha = m_alpha->eval(bRec.uv).x();
+
+        return Warp::squareToBeckmannPdf(wh, alpha) / (4.0f * std::abs(bRec.wo.dot(wh)));
     }
 
     /// Sample the BRDF
@@ -78,8 +100,20 @@ public:
             return Color3f(0.0f);
 
         bRec.measure = ESolidAngle;
+        bRec.eta = 1.0f;
 
-        throw NoriException("RoughConductor::sample() is not yet implemented!");
+        float alpha = m_alpha->eval(bRec.uv).x();
+        Vector3f wh = Warp::squareToBeckmann(_sample, alpha);
+        bRec.wo = 2.0f * bRec.wi.dot(wh) * wh - bRec.wi;
+
+        if (Frame::cosTheta(bRec.wo) <= 0.0f)
+            return Color3f(0.0f);
+
+        float p = pdf(bRec);
+        if (p <= 0.0f)
+            return Color3f(0.0f);
+
+        return eval(bRec) * Frame::cosTheta(bRec.wo) / p;
     }
 
     bool isDiffuse() const {
@@ -126,6 +160,8 @@ private:
     Texture* m_alpha;
     Texture* m_R0;
 };
+
+
 
 
 class RoughDielectric : public BSDF {
@@ -228,6 +264,7 @@ private:
 
 
 
+
 class RoughSubstrate : public BSDF {
 public:
     RoughSubstrate(const PropertyList &propList) {
@@ -254,8 +291,33 @@ public:
             || Frame::cosTheta(bRec.wo) <= 0)
             return Color3f(0.0f);
 
+        float cosThetaI = Frame::cosTheta(bRec.wi);
+        float cosThetaO = Frame::cosTheta(bRec.wo);
 
-		throw NoriException("RoughSubstrate::eval() is not yet implemented!");
+        // Difuso Ashikhmin-Shirley, Ec. 8
+        auto pow5 = [](float v) { return (v * v) * (v * v) * v; };
+        float r0 = (m_extIOR - m_intIOR) / (m_extIOR + m_intIOR);
+
+        Color3f kd = m_kd->eval(bRec.uv);
+        Color3f f_diff = (28.0f * kd / (23.0f * M_PI))
+                    * (1.0f - r0 * r0)
+                    * (1.0f - pow5(1.0f - 0.5f * cosThetaI))
+                    * (1.0f - pow5(1.0f - 0.5f * cosThetaO));
+
+        // Microfaceta dielectrica Ec. 9 sin simplificacion
+        Color3f f_mf(0.0f);
+        Vector3f wh = bRec.wi + bRec.wo;
+        float alpha = m_alpha->eval(bRec.uv).x();
+        if (!wh.isZero()) {
+            wh.normalize();
+            float D = Reflectance::BeckmannNDF(wh, alpha);
+            float F = Reflectance::fresnel(wh.dot(bRec.wi), m_extIOR, m_intIOR);
+            float G = Reflectance::G1(bRec.wi, wh, alpha) *
+                    Reflectance::G1(bRec.wo, wh, alpha);
+            f_mf = Color3f((D * F * G) / (4.0f * cosThetaI * cosThetaO));
+            }
+
+        return f_diff + f_mf;
 	}
 
     /// Evaluate the sampling density of \ref sample() wrt. solid angles
@@ -266,8 +328,20 @@ public:
             || Frame::cosTheta(bRec.wi) <= 0
             || Frame::cosTheta(bRec.wo) <= 0)
             return 0.0f;
+        
+        float p_mf = Reflectance::fresnel(Frame::cosTheta(bRec.wi), m_extIOR, m_intIOR);
 
-		throw NoriException("RoughSubstrate::eval() is not yet implemented!");
+        float pdf_mf = 0.0f;
+        Vector3f wh = bRec.wi + bRec.wo;
+
+        float alpha = m_alpha->eval(bRec.uv).x();
+        if (!wh.isZero()) {
+            wh.normalize();
+            pdf_mf = Warp::squareToBeckmannPdf(wh, alpha) / (4.0f * std::abs(bRec.wo.dot(wh)));
+        }
+        float pdf_diff = Warp::squareToCosineHemispherePdf(bRec.wo);
+
+        return p_mf * pdf_mf + (1.0f - p_mf) * pdf_diff;
     }
 
     /// Sample the BRDF
@@ -281,8 +355,28 @@ public:
             return Color3f(0.0f);
 
         bRec.measure = ESolidAngle;
+        bRec.eta = 1.0f;
 
-		throw NoriException("RoughSubstrate::sample() is not yet implemented!");
+        float p_mf = Reflectance::fresnel(Frame::cosTheta(bRec.wi), m_extIOR, m_intIOR);
+
+        float alpha = m_alpha->eval(bRec.uv).x();
+        if (_sample.x() < p_mf) {
+            Point2f rescaled(_sample.x() / p_mf, _sample.y());
+            Vector3f wh = Warp::squareToBeckmann(rescaled, alpha);
+            bRec.wo = 2.0f * bRec.wi.dot(wh) * wh - bRec.wi;
+        } else {
+            Point2f rescaled((_sample.x() - p_mf) / (1.0f - p_mf), _sample.y());
+            bRec.wo = Warp::squareToCosineHemisphere(rescaled);
+        }
+
+        if (Frame::cosTheta(bRec.wo) <= 0.0f)
+            return Color3f(0.0f);
+
+        float p = pdf(bRec);
+        if (p <= 0.0f)
+            return Color3f(0.0f);
+
+        return eval(bRec) * Frame::cosTheta(bRec.wo) / p;
 	}
 
     bool isDiffuse() const {
@@ -340,4 +434,3 @@ NORI_REGISTER_CLASS(RoughDielectric, "roughdielectric");
 NORI_REGISTER_CLASS(RoughSubstrate, "roughsubstrate");
 
 NORI_NAMESPACE_END
- 
