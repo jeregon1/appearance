@@ -1,7 +1,15 @@
 
 build/
 *.exr
-doc/
 .vscode/
 ext/
 cmake/
+
+# Submissions and course materials stay local: the GitHub repo is public
+entregas/
+materials/
+
+# Render outputs; reference images from the course patches stay tracked
+Nori2/scenes/**/*.png
+!Nori2/scenes/**/references/*.png
+/chitest.m
