@@ -1,0 +1,48 @@
+<scene>
+	<!-- Independent sample generator -->
+	<sampler type="independent">
+		<integer name="sampleCount" value="1"/>
+	</sampler>
+
+	<!-- No need for lighting here, we can just check the albedo at each point -->
+    <integrator type="aov">
+		<string name="variable" value="albedo"/>
+	</integrator>
+
+	<!-- Load the plane obj -->
+	<mesh type="obj">
+		<string name="filename" value="meshes/plane.obj"/>
+
+		<bsdf type="diffuse">
+			<texture type="checker" name="albedo"> 
+			<float name="scalex" value="100"/>
+			<float name="scaley" value="100"/>
+			</texture>
+		</bsdf>
+	</mesh>
+
+
+	<!-- No need for lights for this example -->
+	<!-- <emitter type="pointlight">
+		<color name="radiance" value="10000, 10000, 10000"/>
+		<point name="position" value="0, 50, 0"/>
+	</emitter> -->
+
+
+	<!-- Render the scene viewed by a perspective camera -->
+	<camera type="perspective">
+        <!-- 3D origin, target point, and 'up' vector -->
+		<transform name="toWorld">
+			<lookat target="0, 0, 0" 
+					origin="-4, .5, 0" 
+					up="0.00576335, 0.999928, 0.0105247"/>
+		</transform>
+
+		<!-- Field of view: 45 degrees -->
+		<float name="fov" value="45"/>
+
+		<!-- 768 x 768 pixels -->
+		<integer name="width" value="768"/>
+		<integer name="height" value="576"/>
+	</camera>
+</scene>
