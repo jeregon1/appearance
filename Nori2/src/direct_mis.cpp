@@ -4,18 +4,13 @@
 #include <nori/bsdf.h>
 #include <nori/sampler.h>
 #include <nori/frame.h>
+#include <nori/emittersampling.h>
 
 NORI_NAMESPACE_BEGIN
 
 class DirectMIS : public Integrator {
 public:
     DirectMIS(const PropertyList &props) {}
-
-    // Peso MIS usando heuristica de balance
-    static float miWeight(float pdfA, float pdfB) {
-        float denom = pdfA + pdfB;
-        return (denom > 0.0f) ? (pdfA / denom) : 0.0f;
-    }
 
     Color3f Li(const Scene *scene, Sampler *sampler, const Ray3f &ray) const override {
         Intersection its;
@@ -32,41 +27,8 @@ public:
 
         const BSDF *bsdf = its.mesh->getBSDF();
 
-        // Prueba 1: Muestreo de emisor
-        {
-            float pdflight = 0.0f;
-            const Emitter *em = scene->sampleEmitter(sampler->next1D(), pdflight);
-
-            if (em != nullptr && pdflight > 0.0f) {
-                EmitterQueryRecord eRec(its.p);
-                Color3f Le = em->sample(eRec, sampler->next2D(), 0.0f);
-
-                if (!Le.isZero()) {
-                    Ray3f shadowRay(its.p, eRec.wi);
-                    Intersection shadowIts;
-                    bool isOccluded = scene->rayIntersect(shadowRay, shadowIts) &&
-                                      (shadowIts.t < eRec.dist - 1e-4f);
-
-                    if (!isOccluded) {
-                        BSDFQueryRecord bRec(its.toLocal(-ray.d), its.toLocal(eRec.wi), its.uv, ESolidAngle);
-                        float cosTheta = Frame::cosTheta(bRec.wo);
-
-                        if (cosTheta > 0.0f) {
-                            Color3f f = bsdf->eval(bRec);
-                            if (!f.isZero()) {
-                                float w_em = 1.0f;
-                                if (!em->isDelta()) {
-                                    float pdf_em = pdflight * eRec.pdf;
-                                    float pdf_mat = bsdf->pdf(bRec);
-                                    w_em = miWeight(pdf_em, pdf_mat);
-                                }
-                                Lo += w_em * (Le * f * cosTheta) / pdflight;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        // Prueba 1: Muestreo de emisor, ponderado con MIS
+        Lo += sampleEmitterDirect(scene, sampler, its, its.toLocal(-ray.d), true);
 
         // Prueba 2: Muestreo de material (BRDF)
         {

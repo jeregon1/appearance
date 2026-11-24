@@ -70,6 +70,7 @@ add_executable(nori
   include/nori/vector.h
   include/nori/warp.h
   include/nori/reflectance.h
+  include/nori/emittersampling.h
 
   # Source code files
   src/reflectance.cpp
